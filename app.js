@@ -78,6 +78,10 @@ function seedConversations() {
 seedConversations();
 
 function currentConversation() { return conversations.find(c => c.id === activeConversationId) || null; }
+function recentConversations() {
+  const cutoff = now() - 7 * 86400000;
+  return conversations.filter(c => c.messages.length && c.lastActive >= cutoff).sort((a,b) => b.lastActive - a.lastActive);
+}
 function createConversation() {
   const c = { id: uid(), title: 'New conversation', lastActive: now(), messages: [], unknownCount: 0 };
   conversations.unshift(c); activeConversationId = c.id; saveConversations(); return c;
@@ -218,28 +222,29 @@ function contextLabel() {
 }
 function aiPage() {
   if (state.aiView==='history') return historyView();
-  const c = currentConversation() || createConversation();
-  const isEmpty = !c.messages.length;
+  const c = currentConversation();
+  const isEmpty = !c || !c.messages.length;
   return `<section class="ai-screen">
-    <header class="ai-header"><button data-action="close-ai" aria-label="Back">‹</button><div><b>WillBet AI</b><small>From ${contextLabel()}</small></div><button data-action="ai-history" aria-label="History">◷</button><button data-action="new-chat" aria-label="New chat">＋</button></header>
+    <header class="ai-header"><button data-action="close-ai" aria-label="Back">‹</button><div><b>WillBet AI</b><small>From ${contextLabel()}</small></div><button data-action="ai-history" aria-label="History">◷</button>${isEmpty?'':newChatButton()}</header>
     <div class="ai-chat" id="ai-chat">${isEmpty ? aiWelcome() : c.messages.map(messageHTML).join('')}</div>
     <form class="ai-input" id="ai-form"><input id="ai-question" autocomplete="off" placeholder="Ask WillBet AI..."><button type="submit" aria-label="Send">↑</button></form>
   </section>`;
 }
+function newChatButton() { return '<button class="header-new-chat" data-action="new-chat" aria-label="New Chat" title="New Chat"><span>＋</span><small>New</small></button>'; }
 function aiWelcome() {
   const qs = suggested[state.aiSourceRoute] || [];
-  return `<div class="ai-welcome"><div class="ai-orb">✦</div><h1>Hi, I’m WillBet AI</h1><p>How can I help you?</p>${qs.length?`<div class="suggestions"><small>Suggested Questions</small>${qs.map(q=>`<button data-question="${q}">${q}<span>›</span></button>`).join('')}</div>`:''}</div>`;
+  const previous = recentConversations()[0];
+  return `<div class="ai-welcome"><div class="ai-orb">✦</div><h1>Hi, I’m WillBet AI</h1><p>How can I help you?</p>${qs.length?`<div class="suggestions"><small>Suggested Questions</small>${qs.map(q=>`<button data-question="${q}">${q}<span>›</span></button>`).join('')}</div>`:''}${previous?`<button class="continue-conversation" data-conversation="${previous.id}"><small>Continue previous conversation</small><b>${escapeHTML(previous.title)}</b><span>${relativeTime(previous.lastActive)} <em>›</em></span></button>`:''}</div>`;
 }
 function messageHTML(m) {
   if (m.loading) return `<article class="message ai loading-message"><div class="thinking"><i>✦</i><span>${m.content}</span></div></article>`;
   return `<article class="message ${m.role}">${m.role==='ai'?'<div class="mini-ai">✦</div>':''}<div class="message-body">${m.content}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}</div></article>`;
 }
 function historyView() {
-  const cutoff = now() - 7*86400000;
-  const list = conversations.filter(c=>c.lastActive>=cutoff).sort((a,b)=>b.lastActive-a.lastActive);
+  const list = recentConversations();
   const groups = {};
   list.forEach(c=>{ const k=historyGroup(c.lastActive); (groups[k] ||= []).push(c); });
-  return `<section class="ai-screen"><header class="ai-header history-head"><button data-action="back-chat">‹</button><div><b>Recent Conversations</b><small>Last 7 days</small></div><button data-action="new-chat">＋</button></header><div class="conversation-list">${Object.entries(groups).map(([g,items])=>`<section><h2>${g}</h2>${items.map(c=>`<button data-conversation="${c.id}"><span>◴</span><b>${escapeHTML(c.title)}</b><small>${formatTime(c.lastActive)}</small><em>›</em></button>`).join('')}</section>`).join('') || '<p class="history-empty">No recent conversations.</p>'}</div></section>`;
+  return `<section class="ai-screen"><header class="ai-header history-head"><button data-action="back-chat">‹</button><div><b>Recent Conversations</b><small>Last 7 days</small></div>${newChatButton()}</header><div class="conversation-list">${Object.entries(groups).map(([g,items])=>`<section><h2>${g}</h2>${items.map(c=>`<button data-conversation="${c.id}"><span>◴</span><b>${escapeHTML(c.title)}</b><small>${formatTime(c.lastActive)}</small><em>›</em></button>`).join('')}</section>`).join('') || '<p class="history-empty">No recent conversations.</p>'}</div></section>`;
 }
 function historyGroup(ts) {
   const d=new Date(ts), n=new Date();
@@ -248,6 +253,13 @@ function historyGroup(ts) {
   return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
 }
 function formatTime(ts){ return new Date(ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+function relativeTime(ts) {
+  const diff = Math.max(0, now() - ts);
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} min ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} hr ago`;
+  return `${Math.floor(diff / 86400000)} days ago`;
+}
 function escapeHTML(s){ return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 
 function drawer() {
@@ -328,10 +340,10 @@ function openAI() {
   const scroller=phone.querySelector('.page-scroll');
   if(scroller) state.scrollPositions[state.route]=scroller.scrollTop;
   state.aiSourceRoute=state.route; state.returnRoute=state.route; state.aiMode=true; state.aiView='chat'; state.drawerOpen=false;
-  let c=currentConversation(); if(!c) c=createConversation(); touchConversation(c); saveState(); render();
+  const c=currentConversation(); if(c) touchConversation(c); saveState(); render();
 }
 function closeAI() { state.aiMode=false; state.route=state.returnRoute; saveState(); render(); }
-function newChat() { createConversation(); state.aiView='chat'; render(); requestAnimationFrame(()=>phone.querySelector('#ai-question')?.focus()); }
+function newChat() { activeConversationId=null; saveConversations(); state.aiView='chat'; render(); requestAnimationFrame(()=>phone.querySelector('#ai-question')?.focus()); }
 function scrollChatBottom(){ const el=phone.querySelector('#ai-chat'); if(el) el.scrollTop=el.scrollHeight; }
 
 function sendQuestion(text, options={}) {
@@ -440,7 +452,7 @@ document.addEventListener('click', e => {
   const conv=e.target.closest('[data-conversation]')?.dataset.conversation; if(conv){activeConversationId=conv;localStorage.setItem(KEYS.active,conv);const c=currentConversation();touchConversation(c);state.aiView='chat';render();return;}
   const tab=e.target.closest('[data-bets-tab]')?.dataset.betsTab; if(tab){state.myBetsTab=tab;saveState();render({preserveScroll:true});return;}
   const demoAction=e.target.closest('[data-demo]')?.dataset.demo;
-  if(demoAction==='clear'){conversations=[];activeConversationId=null;localStorage.removeItem(KEYS.conversations);localStorage.removeItem(KEYS.active);createConversation();render();showToast('Conversations cleared');}
+  if(demoAction==='clear'){conversations=[];activeConversationId=null;localStorage.removeItem(KEYS.conversations);localStorage.removeItem(KEYS.active);render();showToast('Conversations cleared');}
   if(demoAction==='reset'){Object.values(KEYS).forEach(k=>localStorage.removeItem(k));location.reload();}
   const toast=e.target.closest('[data-toast]')?.dataset.toast; if(toast)showToast(toast);
 });
