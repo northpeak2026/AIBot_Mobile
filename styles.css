@@ -10,7 +10,7 @@
 .ai-fab{position:absolute;z-index:19;right:12px;bottom:90px;width:51px;height:51px;border:1px solid #db9bff;border-radius:50%;background:linear-gradient(145deg,#c461f2,#652b90);box-shadow:0 10px 28px #7d30a966;display:grid;place-items:center;font-size:23px;touch-action:none}.ai-fab:after{content:"AI";position:absolute;font-size:8px;font-weight:900;bottom:6px}
 #demo-panel{display:none;width:250px;margin-top:28px;background:#171419;border:1px solid #332e38;border-radius:18px;padding:18px;position:sticky;top:28px}.demo-title{font-size:16px;font-weight:800;margin:0 0 5px}.demo-sub{font-size:12px;color:#9f96a7;margin:0 0 18px}
 #toast{position:fixed;z-index:100;left:50%;bottom:24px;transform:translate(-50%,25px);opacity:0;background:#f4eef8;color:#211625;padding:11px 16px;border-radius:999px;font-size:13px;font-weight:750;transition:.25s;pointer-events:none;white-space:nowrap}#toast.show{opacity:1;transform:translate(-50%,0)}
-@media(min-width:760px){#app-shell{padding-top:18px;padding-bottom:18px}#phone{height:min(812px,calc(100vh - 36px));border-radius:26px}#demo-panel{display:block}}
+@media(min-width:760px){#app-shell{padding-top:18px;padding-bottom:18px}#phone{height:min(812px,calc(100vh - 36px));border-radius:26px}}
 @media(max-width:759px){#app-shell{padding:0}#phone{width:100vw;min-width:0;max-width:430px;box-shadow:none}.hero{margin-top:0}}
 
 /* Shared product shell */
