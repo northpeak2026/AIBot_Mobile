@@ -139,7 +139,7 @@ function sportsPage() {
   </section>`;
 }
 function sportsEventCard(a,b,time,odds,featured) {
-  return `<article class="sports-card ${featured?'featured':''}" ${featured?'data-route="sports-event"':''}>
+  return `<article class="sports-card ${featured?'featured':''}" data-route="sports-event">
     <div class="sports-card-top"><span>明天 ${time}</span><span>♡ 151 个盘口 ›</span></div>
     <div class="sports-event-row"><div class="team-stack"><b>⚪ ${a}</b><b>🔵 ${b}</b></div><div class="market-mini"><span>主胜<strong>${odds[0]}</strong></span><span>${featured?'-0.5':'0'}<strong>${odds[1]}</strong></span><span>客胜<strong>${odds[2]}</strong></span></div></div>
     <div class="card-tags"><span>▦ 动画</span><span>▥ 统计</span></div></article>`;
@@ -264,6 +264,20 @@ function floatingButton() {
   const y = Number(localStorage.getItem(KEYS.fabY));
   const style = y ? `style="top:${y}px;bottom:auto"` : '';
   return `<button class="ai-fab" ${style} data-action="open-ai" aria-label="Open WillBet AI">✦</button>`;
+}
+
+function syncFloatingButton() {
+  if (state.aiMode || state.route==='login') return;
+  const existing = phone.querySelector('.ai-fab');
+  if (!aiShortcut) { existing?.remove(); return; }
+  if (existing) return;
+  const template = document.createElement('template');
+  template.innerHTML = floatingButton();
+  const fab = template.content.firstElementChild;
+  if (!fab) return;
+  const nav = phone.querySelector('.bottom-nav');
+  if (nav) phone.insertBefore(fab, nav); else phone.appendChild(fab);
+  bindFabDrag();
 }
 
 function businessPage() {
@@ -433,7 +447,7 @@ document.addEventListener('click', e => {
 
 document.addEventListener('submit',e=>{ if(e.target.id==='ai-form'){e.preventDefault();const input=phone.querySelector('#ai-question');sendQuestion(input.value);input.value='';} });
 document.addEventListener('change',e=>{
-  if(e.target.id==='shortcut-switch'){aiShortcut=e.target.checked;localStorage.setItem(KEYS.shortcut,String(aiShortcut));render({preserveScroll:true});}
+  if(e.target.id==='shortcut-switch'){aiShortcut=e.target.checked;localStorage.setItem(KEYS.shortcut,String(aiShortcut));syncFloatingButton();}
   if(e.target.id==='demo-login'){state.loggedIn=e.target.value==='logged';saveState();render();showToast(state.loggedIn?'Demo state: Logged In':'Demo state: Guest');}
   if(e.target.id==='demo-scenario'){state.scenario=e.target.value;if(state.scenario==='betFailed')state.recentAction='betFailed';else if(state.scenario==='withdrawalBlocked')state.recentAction='withdrawFailed';else if(state.scenario==='regionRestricted')state.recentAction='gameFailed';else state.recentAction=null;saveState();render();}
 });
