@@ -15,7 +15,7 @@ const DEFAULT_STATE = {
   route: 'home', loggedIn: true, scenario: 'normal', drawerOpen: false,
   aiMode: false, aiView: 'chat', aiSourceRoute: 'home', returnRoute: 'home',
   scrollPositions: {}, selectedSelection: null, betStake: 100, betSlipOpen: false,
-  recentAction: null, myBetsTab: 'sports', pendingAuth: null
+  recentAction: null, myBetsTab: 'sports', pendingAuth: null, currentSportsEvent: 'tottenham', currentCasinoGame: null
 };
 
 function readJSON(key, fallback) {
@@ -41,10 +41,35 @@ const routeMeta = {
   mybets: ['My Bets', 'Sports'], login: ['Account', 'Login']
 };
 
+const sportsMockEvents = {
+  tottenham: {
+    league: '英格兰足球超级联赛', time: 'Tomorrow · 7:30 PM', home: 'Tottenham', away: 'Aston Villa', markets: 'Pre-match · 151 Markets',
+    handicap: [['Tottenham','让球 -0.5','2.05'],['Aston Villa','让球 +0.5','1.81']],
+    result: [['Tottenham','2.06'],['Draw','3.62'],['Aston Villa','3.58']], total: [['Over 2.5','1.92'],['Under 2.5','1.88']]
+  },
+  manchester: {
+    league: 'Premier League', time: 'Sep 24 · 20:00', home: 'Manchester United', away: 'Chelsea', markets: 'Upcoming · 126 Markets',
+    handicap: [['Manchester United','Handicap -0.5','2.12'],['Chelsea','Handicap +0.5','1.76']],
+    result: [['Manchester United','2.24'],['Draw','3.45'],['Chelsea','3.10']], total: [['Over 2.5','1.95'],['Under 2.5','1.85']]
+  }
+};
+
+const casinoGames = {
+  'evolution-baccarat': { id:'evolution-baccarat', title:'Evolution Baccarat', provider:'Evolution', category:'Live Baccarat', kind:'cleopatra', art:'♛', rtp:'98.9%', volatility:'Low' },
+  'lightning-baccarat': { id:'lightning-baccarat', title:'Lightning Baccarat', provider:'Evolution', category:'Live Baccarat', kind:'zeus', art:'⚡', rtp:'98.7%', volatility:'Medium' },
+  'wm-baccarat': { id:'wm-baccarat', title:'WM Baccarat', provider:'WM', category:'Live Baccarat', kind:'mahjong', art:'♦', rtp:'98.8%', volatility:'Low' },
+  'sexy-baccarat': { id:'sexy-baccarat', title:'Sexy Baccarat', provider:'Sexy Gaming', category:'Live Baccarat', kind:'candy', art:'♥', rtp:'98.6%', volatility:'Medium' }
+};
+const gameCategories = {
+  baccarat: { label:'Baccarat', keywords:['百家乐','baccarat','บาคาร่า'], games:['evolution-baccarat','lightning-baccarat','wm-baccarat','sexy-baccarat'] }
+};
+
 const suggested = {
-  sports: ['怎么体育投注？', '什么是有效流水？', '在哪里看我的注单？'],
+  sports: ['怎么体育投注？', '曼联下一场比赛是什么时候？', '什么是有效流水？', '在哪里看我的注单？'],
   'sports-event': ['-0.5 是什么意思？', '为什么赔率会变化？', '为什么不能下注？', '预计派彩怎么算？'],
-  casino: ['RTP 是什么意思？', '什么是游戏波动性？', '最近玩的游戏在哪里？'],
+  casino: ['帮我找百家乐', '有什么热门游戏？', 'RTP 是什么意思？'],
+  'casino-category': ['还有其他百家乐吗？', '有哪些真人游戏？'],
+  'casino-baccarat': ['还有其他百家乐吗？', '有哪些真人游戏？'],
   'casino-game': ['RTP 是什么意思？', '为什么这个游戏打不开？', '这个游戏可以试玩吗？'],
   wallet: ['怎么充值？', '怎么提现？', '什么是有效流水？'],
   withdrawal: ['为什么不能提现？', '我还差多少流水？', '提现手续费是多少？'],
@@ -53,6 +78,9 @@ const suggested = {
 
 function now() { return Date.now(); }
 function uid() { return `c_${now()}_${Math.random().toString(36).slice(2, 7)}`; }
+function currentSportsEvent() { return sportsMockEvents[state.currentSportsEvent] || sportsMockEvents.tottenham; }
+function currentCasinoGame() { return casinoGames[state.currentCasinoGame] || { title:'Starlight Princess 1000', provider:'Pragmatic Play', category:'Slots', kind:'starlight', art:'✦', rtp:'96.5%', volatility:'High' }; }
+function gameCategoryForQuery(query) { const normalized=String(query).toLowerCase(); return Object.entries(gameCategories).find(([,category])=>category.keywords.some(keyword=>normalized.includes(keyword.toLowerCase())))?.[0] || null; }
 function saveState() {
   const safe = { ...state, drawerOpen: false, aiMode: false, aiView: 'chat' };
   localStorage.setItem(KEYS.state, JSON.stringify(safe));
@@ -129,7 +157,7 @@ function emptyPage(title, emoji, copy) {
 function homePage() {
   return `${header()}<section class="hero"><div class="eyebrow">WILLBET EXCLUSIVE</div><h1>投注返水</h1><p>每日福利，最高返水无上限</p><button class="primary" data-route="promotion-detail">查看规则</button></section>${searchBar('搜索游戏或赛事')}
   <section class="section"><div class="section-head"><h2>🔥 热门赛事</h2><button data-route="sports">更多 》</button></div>
-    <article class="event-card" data-route="sports-event"><div class="event-meta">英格兰 · 英格兰足球超级联赛</div><div class="teams"><span>Tottenham</span><span class="vs">VS</span><span>Aston Villa</span></div><div class="odds"><button class="odd">主胜<b>2.06</b></button><button class="odd">-0.5<b>2.05</b></button><button class="odd">客胜<b>3.58</b></button></div></article></section>
+    <article class="event-card" data-route="sports-event" data-event="tottenham"><div class="event-meta">英格兰 · 英格兰足球超级联赛</div><div class="teams"><span>Tottenham</span><span class="vs">VS</span><span>Aston Villa</span></div><div class="odds"><button class="odd">主胜<b>2.06</b></button><button class="odd">-0.5<b>2.05</b></button><button class="odd">客胜<b>3.58</b></button></div></article></section>
   <section class="section"><div class="section-head"><h2>🔥 热门游戏</h2><button data-route="casino">全部 》</button></div><div class="game-grid"><article class="game" data-route="casino-game"><b>Starlight Princess 1000</b><small>Pragmatic Play · RTP 96.5%</small></article><article class="game" data-route="casino-category"><b>凤凰麻将</b><small>Askmeslot · 906 在线</small></article></div></section>`;
 }
 
@@ -137,28 +165,33 @@ function sportsPage() {
   return `${header()}${searchBar('搜索赛事')}${chips(['🔥 焦点赛事','▥ 进行中','▣ 即将开始'])}
   <section class="league-tabs"><button class="active">英格兰足球超级联赛</button><button>西班牙足球甲级联赛</button></section>
   <section class="league"><div class="league-head">🏴 英格兰 › <b>英格兰足球超级联赛</b></div>
-    ${sportsEventCard('Brentford','Chelsea','3:00 AM',['2.67','2.00','1.95'],false)}
-    ${sportsEventCard('Tottenham','Aston Villa','7:30 PM',['2.06','2.05','3.58'],true)}
-    ${sportsEventCard('Brighton','Arsenal','10:00 PM',['4.87','1.97','1.70'],false)}
+    ${sportsEventCard('Brentford','Chelsea','Tomorrow · 3:00 AM',['2.67','2.00','1.95'],false,'tottenham')}
+    ${sportsEventCard('Tottenham','Aston Villa','Tomorrow · 7:30 PM',['2.06','2.05','3.58'],true,'tottenham')}
+    ${sportsEventCard('Manchester United','Chelsea','Sep 24 · 20:00',['2.24','2.12','3.10'],true,'manchester')}
+    ${sportsEventCard('Brighton','Arsenal','Tomorrow · 10:00 PM',['4.87','1.97','1.70'],false,'tottenham')}
   </section>`;
 }
-function sportsEventCard(a,b,time,odds,featured) {
-  return `<article class="sports-card ${featured?'featured':''}" data-route="sports-event">
-    <div class="sports-card-top"><span>明天 ${time}</span><span>♡ 151 个盘口 ›</span></div>
+function sportsEventCard(a,b,time,odds,featured,eventId) {
+  return `<article class="sports-card ${featured?'featured':''}" data-route="sports-event" data-event="${eventId}">
+    <div class="sports-card-top"><span>${time}</span><span>♡ 151 个盘口 ›</span></div>
     <div class="sports-event-row"><div class="team-stack"><b>⚪ ${a}</b><b>🔵 ${b}</b></div><div class="market-mini"><span>主胜<strong>${odds[0]}</strong></span><span>${featured?'-0.5':'0'}<strong>${odds[1]}</strong></span><span>客胜<strong>${odds[2]}</strong></span></div></div>
     <div class="card-tags"><span>▦ 动画</span><span>▥ 统计</span></div></article>`;
 }
 
 function sportsEventPage() {
-  const selected = !!state.selectedSelection;
-  return `${header()}${pageTitle('英格兰足球超级联赛','sports')}
-  <section class="match-hero"><div class="match-time">Tomorrow · 7:30 PM</div><div class="match-teams"><div><span>⚪</span><b>Tottenham</b></div><strong>VS</strong><div><span>🔵</span><b>Aston Villa</b></div></div><div class="live-note">Pre-match · 151 Markets</div></section>
-  <section class="market-block"><div class="market-head"><b>全场让球</b><span>⌃</span></div><button class="selection ${selected?'selected':''}" data-action="select-bet"><span><b>Tottenham</b><small>让球 -0.5</small></span><strong>2.05</strong></button><button class="selection"><span><b>Aston Villa</b><small>让球 +0.5</small></span><strong>1.81</strong></button></section>
-  <section class="market-block"><div class="market-head"><b>全场赛果</b><span>⌃</span></div><div class="three-select"><button>Tottenham <b>2.06</b></button><button>Draw <b>3.62</b></button><button>Aston Villa <b>3.58</b></button></div></section>
+  const event = currentSportsEvent();
+  const selectionButton = ([team,label,odd]) => { const pick=`${team} ${label} @${odd}`; return `<button class="selection ${state.selectedSelection===pick?'selected':''}" data-action="select-bet" data-selection="${pick}"><span><b>${team}</b><small>${label}</small></span><strong>${odd}</strong></button>`; };
+  return `${header()}${pageTitle(event.league,'sports')}
+  <section class="match-hero"><div class="match-time">${event.time}</div><div class="match-teams"><div><span>⚪</span><b>${event.home}</b></div><strong>VS</strong><div><span>🔵</span><b>${event.away}</b></div></div><div class="live-note">${event.markets}</div></section>
+  <section class="market-block"><div class="market-head"><b>Handicap</b><span>⌃</span></div>${event.handicap.map(selectionButton).join('')}</section>
+  <section class="market-block"><div class="market-head"><b>1X2</b><span>⌃</span></div><div class="three-select">${event.result.map(([team,odd])=>`<button>${team} <b>${odd}</b></button>`).join('')}</div></section>
+  <section class="market-block"><div class="market-head"><b>Total</b><span>⌃</span></div><div class="three-select">${event.total.map(([label,odd])=>`<button>${label} <b>${odd}</b></button>`).join('')}</div></section>
   ${state.betSlipOpen ? betSlip() : ''}`;
 }
 function betSlip() {
-  return `<section class="bet-slip"><div class="slip-grab"></div><div class="slip-title"><b>Bet Slip · 1</b><button data-action="close-slip">×</button></div><div class="slip-pick"><span>Tottenham -0.5</span><strong>@ 2.05</strong></div><label>Stake (USDT)<input id="stake" inputmode="decimal" value="${state.betStake}"></label><div class="slip-data"><span>Available <b>20 USDT</b></span><span>Est. payout <b>${(state.betStake*2.05).toFixed(2)} USDT</b></span></div><button class="primary full" data-action="place-bet">Place Bet</button></section>`;
+  const pick = state.selectedSelection || 'Tottenham 让球 -0.5 @2.05';
+  const odd = Number(pick.match(/@([\d.]+)/)?.[1]) || 2.05;
+  return `<section class="bet-slip"><div class="slip-grab"></div><div class="slip-title"><b>Bet Slip · 1</b><button data-action="close-slip">×</button></div><div class="slip-pick"><span>${pick.replace(/ @.*/, '')}</span><strong>@ ${odd}</strong></div><label>Stake (USDT)<input id="stake" inputmode="decimal" value="${state.betStake}"></label><div class="slip-data"><span>Available <b>20 USDT</b></span><span>Est. payout <b>${(state.betStake*odd).toFixed(2)} USDT</b></span></div><button class="primary full" data-action="place-bet">Place Bet</button></section>`;
 }
 
 function casinoPage() {
@@ -166,15 +199,20 @@ function casinoPage() {
   <section class="section casino-section"><div class="section-head"><h2>🔥 热门游戏</h2><button data-route="casino-category">全部 》</button></div><div class="casino-grid">${gameTile('starlight','Starlight Princess 1000','Pragmatic Play','casino-game')}${gameTile('mahjong','凤凰麻将','Askmeslot','casino-game')}${gameTile('space','太空冲刺','Willbet','casino-game')}</div></section>
   <section class="section casino-section"><div class="section-head"><h2>♜ PP电子</h2><button data-route="casino-provider">全部 》</button></div><div class="casino-grid">${gameTile('zeus','奥林匹斯之门1000','Pragmatic Play','casino-game')}${gameTile('cleopatra','神秘埃及','Pragmatic Play','casino-game')}${gameTile('candy','甜蜜博彩扎1000','Pragmatic Play','casino-game')}</div></section>`;
 }
-function gameTile(kind,title,provider,route) { return `<article class="casino-tile ${kind}" data-route="${route}"><div class="game-art"><span>${kind==='starlight'?'✦':kind==='space'?'🚀':kind==='mahjong'?'🀄':kind==='zeus'?'⚡':kind==='cleopatra'?'𓂀':'●'}</span></div><b>${title}</b><small>${provider}</small><div class="tile-meta"><i></i> 961 <em>RTP 96.5%</em></div></article>`; }
+function gameTile(kind,title,provider,route,gameId=null) { return `<article class="casino-tile ${kind}" data-route="${route}" ${gameId?`data-game="${gameId}"`:''}><div class="game-art"><span>${kind==='starlight'?'✦':kind==='space'?'🚀':kind==='mahjong'?'🀄':kind==='zeus'?'⚡':kind==='cleopatra'?'𓂀':'●'}</span></div><b>${title}</b><small>${provider}</small><div class="tile-meta"><i></i> 961 <em>RTP 96.5%</em></div></article>`; }
 function casinoListPage(type) {
   const title = type==='provider'?'Pragmatic Play':'热门游戏';
   return `${header()}${pageTitle(title,'casino')}${searchBar('搜索游戏')}<section class="section"><div class="casino-grid wrap">${gameTile('starlight','Starlight Princess 1000','Pragmatic Play','casino-game')}${gameTile('zeus','奥林匹斯之门1000','Pragmatic Play','casino-game')}${gameTile('cleopatra','神秘埃及','Pragmatic Play','casino-game')}${gameTile('candy','Candy Stars','Pragmatic Play','casino-game')}</div></section>`;
 }
-function casinoGamePage() {
-  return `${header()}${pageTitle('Game Detail','casino')}<section class="game-detail-art"><span>✦</span><div><small>PRAGMATIC PLAY</small><h1>Starlight<br>Princess 1000</h1></div></section><section class="game-detail-info"><div><h2>Starlight Princess 1000</h2><p>Pragmatic Play · Slots</p></div><button class="favorite">♡</button><dl><div><dt>RTP</dt><dd>96.5%</dd></div><div><dt>Volatility</dt><dd>High</dd></div><div><dt>Availability</dt><dd>Region dependent</dd></div></dl><button class="primary full" data-action="play-game">Play</button><button class="secondary full" data-route="casino-play">Try Demo</button></section>`;
+function baccaratCategoryPage() {
+  const category=gameCategories.baccarat;
+  return `${header()}${pageTitle(category.label,'casino')}${searchBar('搜索游戏')}<section class="section"><div class="section-head"><h2>♠ Live Baccarat</h2><span>${category.games.length} Games</span></div><div class="casino-grid wrap">${category.games.map(id=>{const game=casinoGames[id];return gameTile(game.kind,game.title,game.provider,'casino-game',id);}).join('')}</div></section>`;
 }
-function casinoPlayPage() { return `${pageTitle('Starlight Princess 1000','casino-game')}<section class="play-stage"><span>✦</span><h2>Game Loading</h2><p>Demo game surface</p></section>`; }
+function casinoGamePage() {
+  const game=currentCasinoGame();
+  return `${header()}${pageTitle('Game Detail','casino')}<section class="game-detail-art ${game.kind}"><span>${game.art}</span><div><small>${game.provider.toUpperCase()}</small><h1>${game.title}</h1></div></section><section class="game-detail-info"><div><h2>${game.title}</h2><p>${game.provider} · ${game.category}</p></div><button class="favorite">♡</button><dl><div><dt>RTP</dt><dd>${game.rtp}</dd></div><div><dt>Volatility</dt><dd>${game.volatility}</dd></div><div><dt>Availability</dt><dd>Region dependent</dd></div></dl><button class="primary full" data-action="play-game">Play</button><button class="secondary full" data-route="casino-play">Try Demo</button></section>`;
+}
+function casinoPlayPage() { const game=currentCasinoGame(); return `${pageTitle(game.title,'casino-game')}<section class="play-stage"><span>${game.art}</span><h2>Game Loading</h2><p>Demo game surface</p></section>`; }
 function casinoHistoryPage() { return `${header()}${pageTitle('Game History','casino')}${betsList('casino')}`; }
 
 function walletPage() {
@@ -238,7 +276,10 @@ function aiWelcome() {
 }
 function messageHTML(m) {
   if (m.loading) return `<article class="message ai loading-message"><div class="thinking"><i>✦</i><span>${m.content}</span></div></article>`;
-  return `<article class="message ${m.role}">${m.role==='ai'?'<div class="mini-ai">✦</div>':''}<div class="message-body">${m.content}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}</div></article>`;
+  return `<article class="message ${m.role}">${m.role==='ai'?'<div class="mini-ai">✦</div>':''}<div class="message-body">${m.content}${m.games?aiGameResults(m.games):''}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}</div></article>`;
+}
+function aiGameResults(gameIds) {
+  return `<div class="ai-game-results">${gameIds.map(id=>{const game=casinoGames[id];if(!game)return '';return `<button class="ai-game-card" data-action="open-casino-game" data-game="${game.id}"><div class="ai-game-cover ${game.kind}"><span>${game.art}</span></div><b>${game.title}</b><small>${game.provider}</small></button>`;}).join('')}</div>`;
 }
 function conversationFeedback(c) {
   const last = c.messages[c.messages.length - 1];
@@ -301,7 +342,7 @@ function syncFloatingButton() {
 function businessPage() {
   switch(state.route) {
     case 'home': return homePage(); case 'sports': return sportsPage(); case 'sports-event': return sportsEventPage();
-    case 'casino': return casinoPage(); case 'casino-category': return casinoListPage('category'); case 'casino-provider': return casinoListPage('provider');
+    case 'casino': return casinoPage(); case 'casino-category': return casinoListPage('category'); case 'casino-baccarat': return baccaratCategoryPage(); case 'casino-provider': return casinoListPage('provider');
     case 'casino-game': return casinoGamePage(); case 'casino-play': return casinoPlayPage(); case 'casino-history': return casinoHistoryPage();
     case 'wallet': return walletPage(); case 'deposit': return depositPage(); case 'withdrawal': return withdrawalPage(); case 'deposit-history': return historyPage('deposit');
     case 'withdrawal-history': return historyPage('withdrawal'); case 'turnover': return turnoverPage(); case 'promotion': return promotionPage(); case 'promotion-detail': return promotionDetailPage();
@@ -369,7 +410,7 @@ function sendQuestion(text, options={}) {
   loadingTimer=setTimeout(()=>{
     const target=conversations.find(x=>x.id===c.id); if(!target) return;
     const idx=target.messages.findIndex(m=>m.loading);
-    if(idx>=0) target.messages.splice(idx,1,{role:'ai',content:result.answer,cta:result.cta||null});
+    if(idx>=0) target.messages.splice(idx,1,{role:'ai',content:result.answer,games:result.games||null,cta:result.cta||null});
     touchConversation(target); if(state.aiMode && activeConversationId===target.id) render();
   }, result.delay || 1200);
 }
@@ -377,6 +418,10 @@ function sendQuestion(text, options={}) {
 function mockResponse(q,c) {
   const s=q.toLowerCase().replace(/\s/g,'');
   const has=(...keys)=>keys.some(k=>s.includes(k.toLowerCase().replace(/\s/g,'')));
+  const gameCategory=gameCategoryForQuery(q);
+  if(gameCategory) { const category=gameCategories[gameCategory]; return {loading:`正在查找 ${category.label} 游戏…`,answer:'<strong>找到一些百家乐游戏：</strong>',games:category.games,cta:{label:'View All',action:`${gameCategory}-category`}}; }
+  const askingManchesterMatch = has('曼联','manchesterunited','man united','manunited') && has('比赛','赛事','下一场','在哪里','match','game','找一下');
+  if(askingManchesterMatch) return {loading:'正在查找 Manchester United 的赛事…',answer:'<strong>Manchester United 下一场比赛</strong><br><br><strong class="accent">Manchester United vs Chelsea</strong><br><br>比赛时间：<strong>Sep 24 · 20:00</strong><br>Premier League · Upcoming',cta:{label:'View Event',action:'manchester-event'}};
   if(has('-0.5','－0.5','让球')) return {loading:'正在思考…',answer:'<strong>-0.5 是让球盘。</strong><br><br>如果你选择 Tottenham -0.5，那么 Tottenham 需要在对应结算时段获胜，这个 Selection 才会赢。<br><br>如果比赛打平或 Tottenham 输球，这笔投注会输。'};
   if(has('为什么不能下注','不能下注','下注失败')) return {loading:'正在检查当前投注状态…',answer:'当前投注金额是 <strong class="accent">100 USDT</strong>，但你的可用余额只有 <strong class="accent">20 USDT</strong>，因此无法完成这笔投注。',cta:{label:'Go to Wallet',action:'wallet'}};
   if(has('为什么不能提现','不能提现','提现失败')) {
@@ -411,6 +456,8 @@ function mockResponse(q,c) {
 function ctaAction(action) {
   if(action==='login') { state.aiMode=false; state.route='login'; saveState(); render(); return; }
   if(action==='support') { copySupport(); return; }
+  if(action==='manchester-event') { state.currentSportsEvent='manchester'; state.selectedSelection=null; state.betSlipOpen=false; state.aiMode=false; state.route='sports-event'; state.drawerOpen=false; saveState(); render(); return; }
+  if(action==='baccarat-category') { state.aiMode=false; state.route='casino-baccarat'; state.drawerOpen=false; saveState(); render(); return; }
   if(action==='mybets') state.myBetsTab='sports';
   state.aiMode=false; state.route=action; state.drawerOpen=false; saveState(); render();
 }
@@ -432,7 +479,7 @@ function bindFabDrag() {
 }
 
 document.addEventListener('click', e => {
-  const route=e.target.closest('[data-route]'); if(route){ const r=route.dataset.route; if(r==='menu'){state.drawerOpen=true;render({preserveScroll:true});}else navigate(r); return; }
+  const route=e.target.closest('[data-route]'); if(route){ const r=route.dataset.route; if(r==='menu'){state.drawerOpen=true;render({preserveScroll:true});}else { if(r==='sports-event' && route.dataset.event){state.currentSportsEvent=route.dataset.event;state.selectedSelection=null;state.betSlipOpen=false;} if(r==='casino-game')state.currentCasinoGame=route.dataset.game || null; navigate(r); } return; }
   const action=e.target.closest('[data-action]')?.dataset.action;
   if(action){
     if(action==='open-ai')openAI();
@@ -440,8 +487,9 @@ document.addEventListener('click', e => {
     else if(action==='ai-history'){state.aiView='history';render();}
     else if(action==='back-chat'){state.aiView='chat';render();}
     else if(action==='new-chat')newChat();
+    else if(action==='open-casino-game'){const gameId=e.target.closest('[data-game]')?.dataset.game;if(gameId&&casinoGames[gameId]){state.currentCasinoGame=gameId;state.aiMode=false;state.route='casino-game';state.drawerOpen=false;saveState();render();}}
     else if(action==='close-drawer'){state.drawerOpen=false;render({preserveScroll:true});}
-    else if(action==='select-bet'){state.selectedSelection='Tottenham -0.5 @2.05';state.betSlipOpen=true;state.recentAction='selectionAdded';saveState();render({preserveScroll:true});showToast('Selection added to Bet Slip');}
+    else if(action==='select-bet'){state.selectedSelection=e.target.closest('[data-selection]')?.dataset.selection || 'Tottenham 让球 -0.5 @2.05';state.betSlipOpen=true;state.recentAction='selectionAdded';saveState();render({preserveScroll:true});showToast('Selection added to Bet Slip');}
     else if(action==='close-slip'){state.betSlipOpen=false;saveState();render({preserveScroll:true});}
     else if(action==='place-bet'){const input=phone.querySelector('#stake');state.betStake=Number(input?.value)||100;state.recentAction='betFailed';state.scenario='betFailed';saveState();render({preserveScroll:true});showToast('Unable to place bet · Insufficient balance');}
     else if(action==='withdraw'){state.recentAction='withdrawFailed';state.scenario='withdrawalBlocked';saveState();render({preserveScroll:true});showToast('Withdrawal unavailable · Turnover incomplete');}
