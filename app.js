@@ -226,7 +226,7 @@ function aiPage() {
   const isEmpty = !c || !c.messages.length;
   return `<section class="ai-screen">
     <header class="ai-header"><button data-action="close-ai" aria-label="Back">‹</button><div><b>WillBet AI</b><small>From ${contextLabel()}</small></div><button data-action="ai-history" aria-label="History">◷</button>${isEmpty?'':newChatButton()}</header>
-    <div class="ai-chat" id="ai-chat">${isEmpty ? aiWelcome() : c.messages.map(messageHTML).join('')}</div>
+    <div class="ai-chat" id="ai-chat">${isEmpty ? aiWelcome() : c.messages.map(messageHTML).join('') + conversationFeedback(c)}</div>
     <form class="ai-input" id="ai-form"><input id="ai-question" autocomplete="off" placeholder="Ask WillBet AI..."><button type="submit" aria-label="Send">↑</button></form>
   </section>`;
 }
@@ -239,6 +239,12 @@ function aiWelcome() {
 function messageHTML(m) {
   if (m.loading) return `<article class="message ai loading-message"><div class="thinking"><i>✦</i><span>${m.content}</span></div></article>`;
   return `<article class="message ${m.role}">${m.role==='ai'?'<div class="mini-ai">✦</div>':''}<div class="message-body">${m.content}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}</div></article>`;
+}
+function conversationFeedback(c) {
+  const last = c.messages[c.messages.length - 1];
+  if (!last || last.role !== 'ai' || last.loading) return '';
+  if (c.feedback) return `<section class="conversation-feedback answered" aria-live="polite"><span>${c.feedback==='yes'?'👍':'👎'}</span><small>Thanks for your feedback.</small></section>`;
+  return `<section class="conversation-feedback"><small>Did WillBet AI solve your problem?</small><div><button data-feedback="yes" aria-label="Yes, the AI solved my problem"><span>👍</span>Yes</button><button data-feedback="no" aria-label="No, the AI did not solve my problem"><span>👎</span>No</button></div></section>`;
 }
 function historyView() {
   const list = recentConversations();
@@ -349,6 +355,7 @@ function scrollChatBottom(){ const el=phone.querySelector('#ai-chat'); if(el) el
 function sendQuestion(text, options={}) {
   text=String(text||'').trim(); if(!text) return;
   let c=currentConversation() || createConversation();
+  c.feedback=null;
   if(!options.noUserMessage) c.messages.push({role:'user',content:escapeHTML(text)});
   if(c.title==='New conversation') c.title=text.slice(0,34)+(text.length>34?'…':'');
   c.lastActive=now(); saveConversations(); render();
@@ -448,6 +455,7 @@ document.addEventListener('click', e => {
     return;
   }
   const question=e.target.closest('[data-question]')?.dataset.question; if(question){sendQuestion(question);return;}
+  const feedback=e.target.closest('[data-feedback]')?.dataset.feedback; if(feedback){const c=currentConversation();if(c){c.feedback=feedback;saveConversations();render();}return;}
   const cta=e.target.closest('[data-cta]')?.dataset.cta; if(cta){ctaAction(cta);return;}
   const conv=e.target.closest('[data-conversation]')?.dataset.conversation; if(conv){activeConversationId=conv;localStorage.setItem(KEYS.active,conv);const c=currentConversation();touchConversation(c);state.aiView='chat';render();return;}
   const tab=e.target.closest('[data-bets-tab]')?.dataset.betsTab; if(tab){state.myBetsTab=tab;saveState();render({preserveScroll:true});return;}
