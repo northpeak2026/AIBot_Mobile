@@ -13,7 +13,7 @@ const KEYS = {
 
 const DEFAULT_STATE = {
   route: 'home', loggedIn: true, scenario: 'normal', drawerOpen: false,
-  aiMode: false, aiView: 'chat', aiSourceRoute: 'home', returnRoute: 'home',
+  aiMode: false, aiView: 'chat', historyOpen: false, aiSourceRoute: 'home', returnRoute: 'home',
   scrollPositions: {}, selectedSelection: null, betStake: 100, betSlipOpen: false,
   recentAction: null, myBetsTab: 'sports', pendingAuth: null, currentSportsEvent: 'tottenham', currentCasinoGame: null
 };
@@ -22,10 +22,11 @@ function readJSON(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
 }
 const persisted = readJSON(KEYS.state, {});
-const state = { ...DEFAULT_STATE, ...persisted, drawerOpen: false, aiMode: false, aiView: 'chat' };
+const state = { ...DEFAULT_STATE, ...persisted, drawerOpen: false, aiMode: false, aiView: 'chat', historyOpen: false };
 let aiShortcut = localStorage.getItem(KEYS.shortcut) !== 'false';
 let conversations = readJSON(KEYS.conversations, []);
 let activeConversationId = localStorage.getItem(KEYS.active) || null;
+let draftConversation = null;
 let loadingTimer = null;
 let toastTimer = null;
 
@@ -82,7 +83,7 @@ function currentSportsEvent() { return sportsMockEvents[state.currentSportsEvent
 function currentCasinoGame() { return casinoGames[state.currentCasinoGame] || { title:'Starlight Princess 1000', provider:'Pragmatic Play', category:'Slots', kind:'starlight', art:'✦', rtp:'96.5%', volatility:'High' }; }
 function gameCategoryForQuery(query) { const normalized=String(query).toLowerCase(); return Object.entries(gameCategories).find(([,category])=>category.keywords.some(keyword=>normalized.includes(keyword.toLowerCase())))?.[0] || null; }
 function saveState() {
-  const safe = { ...state, drawerOpen: false, aiMode: false, aiView: 'chat' };
+  const safe = { ...state, drawerOpen: false, aiMode: false, aiView: 'chat', historyOpen: false };
   localStorage.setItem(KEYS.state, JSON.stringify(safe));
 }
 function saveConversations() {
@@ -105,16 +106,29 @@ function seedConversations() {
 }
 seedConversations();
 
-function currentConversation() { return conversations.find(c => c.id === activeConversationId) || null; }
+function currentConversation() { return conversations.find(c => c.id === activeConversationId) || (draftConversation?.id===activeConversationId ? draftConversation : null); }
+function isStoredConversation(c) { return conversations.some(item => item.id===c?.id); }
 function recentConversations() {
   const cutoff = now() - 7 * 86400000;
-  return conversations.filter(c => c.messages.length && c.lastActive >= cutoff).sort((a,b) => b.lastActive - a.lastActive);
+  return conversations.filter(c => c.messages.some(m=>m.role==='ai'&&!m.loading) && c.lastActive >= cutoff).sort((a,b) => b.lastActive - a.lastActive);
 }
-function createConversation() {
+function createConversation({persist=false}={}) {
   const c = { id: uid(), title: 'New conversation', lastActive: now(), messages: [], unknownCount: 0 };
-  conversations.unshift(c); activeConversationId = c.id; saveConversations(); return c;
+  activeConversationId = c.id;
+  if (persist) { conversations.unshift(c); saveConversations(); } else draftConversation=c;
+  return c;
 }
-function touchConversation(c) { c.lastActive = now(); saveConversations(); }
+function promoteConversation(c) { if(!isStoredConversation(c)){conversations.unshift(c);draftConversation=null;} activeConversationId=c.id; saveConversations(); }
+function touchConversation(c) { c.lastActive = now(); if(isStoredConversation(c)) saveConversations(); }
+function conversationTitle(text) {
+  const normalized=String(text).toLowerCase();
+  if(normalized.includes('不能提现')||normalized.includes('withdraw')) return 'Withdrawal Issue';
+  if(normalized.includes('曼联')||normalized.includes('manchester united')||normalized.includes('man united')) return 'Manchester United Match';
+  if(normalized.includes('百家乐')||normalized.includes('baccarat')) return 'Baccarat Games';
+  if(normalized.includes('rtp')) return 'Casino RTP';
+  if(normalized.includes('vip')) return 'VIP Upgrade';
+  return String(text).slice(0,28)+(String(text).length>28?'…':'');
+}
 
 function icon(name) {
   const icons = { menu:'☷', casino:'♠', sports:'⚽', mybets:'▤', promotion:'◉' };
@@ -259,20 +273,19 @@ function contextLabel() {
   return `${meta[0]} · ${meta[1]}`;
 }
 function aiPage() {
-  if (state.aiView==='history') return historyView();
   const c = currentConversation();
   const isEmpty = !c || !c.messages.length;
   return `<section class="ai-screen">
-    <header class="ai-header"><button data-action="close-ai" aria-label="Back">‹</button><div><b>WillBet AI</b><small>From ${contextLabel()}</small></div><button data-action="ai-history" aria-label="History">◷</button>${isEmpty?'':newChatButton()}</header>
+    <header class="ai-header"><button data-action="close-ai" aria-label="Back">‹</button><div><b>WillBet AI</b><small>From ${contextLabel()}</small></div>${newChatButton()}<button class="header-history" data-action="open-history" aria-label="History" title="History">☰</button></header>
     <div class="ai-chat" id="ai-chat">${isEmpty ? aiWelcome() : c.messages.map(messageHTML).join('') + conversationFeedback(c)}</div>
     <form class="ai-input" id="ai-form"><input id="ai-question" autocomplete="off" placeholder="Ask WillBet AI..."><button type="submit" aria-label="Send">↑</button></form>
+    ${state.historyOpen?historyDrawer():''}
   </section>`;
 }
 function newChatButton() { return '<button class="header-new-chat" data-action="new-chat" aria-label="New Chat" title="New Chat"><span>＋</span><small>New</small></button>'; }
 function aiWelcome() {
   const qs = suggested[state.aiSourceRoute] || [];
-  const previous = recentConversations()[0];
-  return `<div class="ai-welcome"><div class="ai-orb">✦</div><h1>Hi, I’m WillBet AI</h1><p>How can I help you?</p>${qs.length?`<div class="suggestions"><small>Suggested Questions</small>${qs.map(q=>`<button data-question="${q}">${q}<span>›</span></button>`).join('')}</div>`:''}${previous?`<button class="continue-conversation" data-conversation="${previous.id}"><small>Continue previous conversation</small><b>${escapeHTML(previous.title)}</b><span>${relativeTime(previous.lastActive)} <em>›</em></span></button>`:''}</div>`;
+  return `<div class="ai-welcome"><div class="ai-orb">✦</div><h1>Hi, I’m WillBet AI</h1><p>How can I help you?</p>${qs.length?`<div class="suggestions"><small>Suggested Questions</small>${qs.map(q=>`<button data-question="${q}">${q}<span>›</span></button>`).join('')}</div>`:''}</div>`;
 }
 function messageHTML(m) {
   if (m.loading) return `<article class="message ai loading-message"><div class="thinking"><i>✦</i><span>${m.content}</span></div></article>`;
@@ -287,11 +300,11 @@ function conversationFeedback(c) {
   if (c.feedback) return `<section class="conversation-feedback answered" aria-live="polite"><span>${c.feedback==='yes'?'👍':'👎'}</span><small>Thanks for your feedback.</small></section>`;
   return `<section class="conversation-feedback"><small>Did WillBet AI solve your problem?</small><div><button data-feedback="yes" aria-label="Yes, the AI solved my problem"><span>👍</span>Yes</button><button data-feedback="no" aria-label="No, the AI did not solve my problem"><span>👎</span>No</button></div></section>`;
 }
-function historyView() {
+function historyDrawer() {
   const list = recentConversations();
   const groups = {};
   list.forEach(c=>{ const k=historyGroup(c.lastActive); (groups[k] ||= []).push(c); });
-  return `<section class="ai-screen"><header class="ai-header history-head"><button data-action="back-chat">‹</button><div><b>Recent Conversations</b><small>Last 7 days</small></div>${newChatButton()}</header><div class="conversation-list">${Object.entries(groups).map(([g,items])=>`<section><h2>${g}</h2>${items.map(c=>`<button data-conversation="${c.id}"><span>◴</span><b>${escapeHTML(c.title)}</b><small>${formatTime(c.lastActive)}</small><em>›</em></button>`).join('')}</section>`).join('') || '<p class="history-empty">No recent conversations.</p>'}</div></section>`;
+  return `<div class="history-scrim" data-action="close-history"></div><aside class="history-drawer" aria-label="Recent Conversations"><header><div><b>WillBet AI</b><small>Recent Conversations</small></div><button data-action="close-history" aria-label="Close history">×</button></header><div class="conversation-list">${Object.entries(groups).map(([g,items])=>`<section><h2>${g}</h2>${items.map(c=>`<button data-conversation="${c.id}"><span>◴</span><b>${escapeHTML(c.title)}</b><small>${formatTime(c.lastActive)}</small><em>›</em></button>`).join('')}</section>`).join('') || '<p class="history-empty">No recent conversations.</p>'}</div><footer><button data-action="new-chat"><span>✎</span>Create New Chat</button></footer></aside>`;
 }
 function historyGroup(ts) {
   const d=new Date(ts), n=new Date();
@@ -300,13 +313,6 @@ function historyGroup(ts) {
   return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
 }
 function formatTime(ts){ return new Date(ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
-function relativeTime(ts) {
-  const diff = Math.max(0, now() - ts);
-  if (diff < 60000) return 'just now';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)} min ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} hr ago`;
-  return `${Math.floor(diff / 86400000)} days ago`;
-}
 function escapeHTML(s){ return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 
 function drawer() {
@@ -386,11 +392,15 @@ function navigate(route) {
 function openAI() {
   const scroller=phone.querySelector('.page-scroll');
   if(scroller) state.scrollPositions[state.route]=scroller.scrollTop;
-  state.aiSourceRoute=state.route; state.returnRoute=state.route; state.aiMode=true; state.aiView='chat'; state.drawerOpen=false;
+  state.aiSourceRoute=state.route; state.returnRoute=state.route; state.aiMode=true; state.aiView='chat'; state.historyOpen=false; state.drawerOpen=false;
   const c=currentConversation(); if(c) touchConversation(c); saveState(); render();
 }
-function closeAI() { state.aiMode=false; state.route=state.returnRoute; saveState(); render(); }
-function newChat() { activeConversationId=null; saveConversations(); state.aiView='chat'; render(); requestAnimationFrame(()=>phone.querySelector('#ai-question')?.focus()); }
+function closeAI() { state.aiMode=false; state.historyOpen=false; state.route=state.returnRoute; saveState(); render(); }
+function newChat() {
+  const c=currentConversation();
+  if(!c || !c.messages.length) { if(state.historyOpen){state.historyOpen=false;render();} return; }
+  activeConversationId=null; draftConversation=null; state.historyOpen=false; saveConversations(); render(); requestAnimationFrame(()=>phone.querySelector('#ai-question')?.focus());
+}
 function scrollChatBottom(){ const el=phone.querySelector('#ai-chat'); if(el) el.scrollTop=el.scrollHeight; }
 
 function sendQuestion(text, options={}) {
@@ -398,20 +408,20 @@ function sendQuestion(text, options={}) {
   let c=currentConversation() || createConversation();
   c.feedback=null;
   if(!options.noUserMessage) c.messages.push({role:'user',content:escapeHTML(text)});
-  if(c.title==='New conversation') c.title=text.slice(0,34)+(text.length>34?'…':'');
-  c.lastActive=now(); saveConversations(); render();
+  if(c.title==='New conversation') c.title=conversationTitle(text);
+  c.lastActive=now(); if(isStoredConversation(c)) saveConversations(); render();
   const result=mockResponse(text,c);
   if(result.requiresLogin) {
     c.messages.push({role:'ai',content:'要查看你当前的有效流水进度，需要先登录你的 WillBet 账户。',cta:{label:'Log In',action:'login'}});
-    state.pendingAuth={conversationId:c.id,question:text}; touchConversation(c); render(); return;
+    promoteConversation(c); state.pendingAuth={conversationId:c.id,question:text}; touchConversation(c); render(); return;
   }
   c.messages.push({role:'ai',content:result.loading,loading:true}); touchConversation(c); render();
   clearTimeout(loadingTimer);
   loadingTimer=setTimeout(()=>{
-    const target=conversations.find(x=>x.id===c.id); if(!target) return;
+    const target=conversations.find(x=>x.id===c.id) || (draftConversation?.id===c.id?draftConversation:null); if(!target) return;
     const idx=target.messages.findIndex(m=>m.loading);
     if(idx>=0) target.messages.splice(idx,1,{role:'ai',content:result.answer,games:result.games||null,cta:result.cta||null});
-    touchConversation(target); if(state.aiMode && activeConversationId===target.id) render();
+    promoteConversation(target); touchConversation(target); if(state.aiMode && activeConversationId===target.id) render();
   }, result.delay || 1200);
 }
 
@@ -484,8 +494,8 @@ document.addEventListener('click', e => {
   if(action){
     if(action==='open-ai')openAI();
     else if(action==='close-ai')closeAI();
-    else if(action==='ai-history'){state.aiView='history';render();}
-    else if(action==='back-chat'){state.aiView='chat';render();}
+    else if(action==='open-history'){state.historyOpen=true;render();}
+    else if(action==='close-history'){state.historyOpen=false;render();}
     else if(action==='new-chat')newChat();
     else if(action==='open-casino-game'){const gameId=e.target.closest('[data-game]')?.dataset.game;if(gameId&&casinoGames[gameId]){state.currentCasinoGame=gameId;state.aiMode=false;state.route='casino-game';state.drawerOpen=false;saveState();render();}}
     else if(action==='close-drawer'){state.drawerOpen=false;render({preserveScroll:true});}
@@ -496,8 +506,8 @@ document.addEventListener('click', e => {
     else if(action==='play-game'){state.recentAction='gameFailed';state.scenario='regionRestricted';saveState();render({preserveScroll:true});showToast('Not available in your region');}
     else if(action==='support')copySupport();
     else if(action==='login-success'){
-      state.loggedIn=true; const pending=state.pendingAuth; state.route=state.returnRoute||'home'; state.aiMode=true; state.aiView='chat'; state.pendingAuth=null;
-      if(pending){activeConversationId=pending.conversationId;localStorage.setItem(KEYS.active,activeConversationId);} saveState(); render(); if(pending)sendQuestion(pending.question,{noUserMessage:true});
+      state.loggedIn=true; const pending=state.pendingAuth; state.route=state.returnRoute||'home'; state.aiMode=true; state.aiView='chat'; state.historyOpen=false; state.pendingAuth=null;
+      if(pending){activeConversationId=pending.conversationId;} saveState(); render(); if(pending)sendQuestion(pending.question,{noUserMessage:true});
     }
     else if(action==='cancel-login'){state.route=state.returnRoute||'home';state.aiMode=!!state.pendingAuth;render();}
     return;
@@ -505,10 +515,10 @@ document.addEventListener('click', e => {
   const question=e.target.closest('[data-question]')?.dataset.question; if(question){sendQuestion(question);return;}
   const feedback=e.target.closest('[data-feedback]')?.dataset.feedback; if(feedback){const c=currentConversation();if(c){c.feedback=feedback;saveConversations();render();}return;}
   const cta=e.target.closest('[data-cta]')?.dataset.cta; if(cta){ctaAction(cta);return;}
-  const conv=e.target.closest('[data-conversation]')?.dataset.conversation; if(conv){activeConversationId=conv;localStorage.setItem(KEYS.active,conv);const c=currentConversation();touchConversation(c);state.aiView='chat';render();return;}
+  const conv=e.target.closest('[data-conversation]')?.dataset.conversation; if(conv){activeConversationId=conv;draftConversation=null;const c=currentConversation();touchConversation(c);state.historyOpen=false;render();return;}
   const tab=e.target.closest('[data-bets-tab]')?.dataset.betsTab; if(tab){state.myBetsTab=tab;saveState();render({preserveScroll:true});return;}
   const demoAction=e.target.closest('[data-demo]')?.dataset.demo;
-  if(demoAction==='clear'){conversations=[];activeConversationId=null;localStorage.removeItem(KEYS.conversations);localStorage.removeItem(KEYS.active);render();showToast('Conversations cleared');}
+  if(demoAction==='clear'){conversations=[];activeConversationId=null;draftConversation=null;localStorage.removeItem(KEYS.conversations);localStorage.removeItem(KEYS.active);render();showToast('Conversations cleared');}
   if(demoAction==='reset'){Object.values(KEYS).forEach(k=>localStorage.removeItem(k));location.reload();}
   const toast=e.target.closest('[data-toast]')?.dataset.toast; if(toast)showToast(toast);
 });
