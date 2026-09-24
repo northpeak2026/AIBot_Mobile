@@ -278,7 +278,7 @@ function aiPage() {
   return `<section class="ai-screen">
     <header class="ai-header"><button data-action="close-ai" aria-label="Back">‹</button><div><b>WillBet AI</b><small>From ${contextLabel()}</small></div>${newChatButton()}<button class="header-history" data-action="open-history" aria-label="History" title="History">☰</button></header>
     <div class="ai-chat" id="ai-chat">${isEmpty ? aiWelcome() : c.messages.map(messageHTML).join('') + conversationFeedback(c)}</div>
-    <form class="ai-input" id="ai-form"><input id="ai-question" autocomplete="off" placeholder="Ask WillBet AI..."><button type="submit" aria-label="Send">↑</button></form>
+    <form class="ai-input" id="ai-form"><div class="ai-input-row"><input id="ai-question" autocomplete="off" placeholder="Ask WillBet AI..."><button type="submit" aria-label="Send">↑</button></div><p class="ai-disclaimer">AI can make mistakes. Please verify important information. <button type="button" data-action="open-ai-disclaimer" aria-label="Learn more about WillBet AI usage">Learn more</button></p></form>
     ${state.historyOpen?historyDrawer():''}
   </section>`;
 }
@@ -497,6 +497,7 @@ document.addEventListener('click', e => {
     else if(action==='open-history'){state.historyOpen=true;render();}
     else if(action==='close-history'){state.historyOpen=false;render();}
     else if(action==='new-chat')newChat();
+    else if(action==='open-ai-disclaimer'){ /* Reserved for a future AI Disclaimer / Usage Notice page. */ }
     else if(action==='open-casino-game'){const gameId=e.target.closest('[data-game]')?.dataset.game;if(gameId&&casinoGames[gameId]){state.currentCasinoGame=gameId;state.aiMode=false;state.route='casino-game';state.drawerOpen=false;saveState();render();}}
     else if(action==='close-drawer'){state.drawerOpen=false;render({preserveScroll:true});}
     else if(action==='select-bet'){state.selectedSelection=e.target.closest('[data-selection]')?.dataset.selection || 'Tottenham 让球 -0.5 @2.05';state.betSlipOpen=true;state.recentAction='selectionAdded';saveState();render({preserveScroll:true});showToast('Selection added to Bet Slip');}
