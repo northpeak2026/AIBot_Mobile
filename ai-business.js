@@ -41,12 +41,12 @@ function businessMessageHTML(m){
   if(m.type==='game-list'||m.type==='event-list')return `<article class="message ai"><div class="mini-ai">✦</div><div class="message-body">${m.content}${m.type==='game-list'?aiGameResults(m.games||[]):(m.events||[]).map(aiEventCard).join('')}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}</div></article>`;
   if(m.type==='bet-confirmation')return betConfirmationHTML(m);
   if(m.type==='action-loading')return `<article class="message ai"><div class="thinking"><i>✦</i><span>${m.content}</span></div></article>`;
-  if(m.type==='bet-result')return `<article class="message ai"><div class="mini-ai">✦</div><div class="message-body">${m.content}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}</div></article>`;
+  if(m.type==='bet-result')return `<article class="message ai" ${m.id?`data-bet-result="${m.id}"`:''}><div class="mini-ai">✦</div><div class="message-body"><div class="${m.outcome==='failure'?'bet-result-warning':''}">${m.content}</div>${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}</div></article>`;
   return null;
 }
 function betConfirmationHTML(m){
   const event=sportsMockEvents[m.pick.eventId],locked=m.status!=='pending';
-  return `<article class="message ai"><div class="message-body bet-confirmation"><h3>Confirm Bet <small>Mock only</small></h3><p>${event.home} vs ${event.away}</p><dl><div><dt>Selection</dt><dd>${escapeHTML(m.pick.label)}</dd></div><div><dt>Odds</dt><dd>${m.pick.odds.toFixed(2)}</dd></div></dl><label>Stake · USDT<input data-ai-stake="${m.id}" type="number" min="1" max="1000" step="0.01" placeholder="请输入投注金额" value="${m.stake||''}" ${locked?'disabled':''}></label><div class="bet-totals"><span>Available Balance <b>${m.availableBalance??500} USDT</b></span><span>Potential Payout <b data-payout="${m.id}">${((Number(m.stake)||0)*m.pick.odds).toFixed(2)} USDT</b></span></div><p class="bet-error" data-bet-error="${m.id}">${m.error||''}</p>${locked?`<small>${m.status==='running'?'Submitting…':m.status==='done'?'Completed':'Cancelled'}</small>`:`<div class="bet-buttons"><button data-ai-cancel="${m.id}">Cancel</button><button data-ai-confirm="${m.id}">Confirm Bet</button></div>`}</div></article>`;
+  return `<article class="message ai"><div class="message-body bet-confirmation"><h3>Confirm Bet</h3><p>${event.home} vs ${event.away}</p><dl><div><dt>Selection</dt><dd>${escapeHTML(m.pick.label)}</dd></div><div><dt>Odds</dt><dd>${m.pick.odds.toFixed(2)}</dd></div></dl><label>Stake · USDT<input data-ai-stake="${m.id}" type="number" min="1" max="1000" step="0.01" placeholder="请输入投注金额" value="${m.stake||''}" ${locked?'disabled':''}></label><div class="bet-totals"><span>Available Balance <b>${m.availableBalance??500} USDT</b></span><span>Potential Payout <b data-payout="${m.id}">${((Number(m.stake)||0)*m.pick.odds).toFixed(2)} USDT</b></span></div><p class="bet-error" data-bet-error="${m.id}">${m.error||''}</p>${locked?`<small>${m.status==='running'?'Submitting…':m.status==='done'?'Completed':'Cancelled'}</small>`:`<div class="bet-buttons"><button data-ai-cancel="${m.id}">Cancel</button><button data-ai-confirm="${m.id}">Confirm Bet</button></div>`}</div></article>`;
 }
 function findBet(id){return currentConversation()?.messages.find(m=>m.type==='bet-confirmation'&&m.id===id);}
 function appendBusinessMessage(message){const c=currentConversation();c.feedback=null;c.messages.push({role:'ai',...message});touchConversation(c);render();}
@@ -65,17 +65,26 @@ async function resumeMockBet(id){
   if(!Number.isFinite(stake)||stake<1||stake>1000){m.error='Enter a stake between 1 and 1,000 USDT.';render();return;}
   if(!state.loggedIn){state.pendingAuth={conversationId:c.id,betId:id};saveState();appendBusinessMessage({type:'bet-result',content:'登录后才能完成投注。',cta:{label:'Log In',action:'login'}});return;}
   const live=marketSelection(m.pick.eventId,m.pick.market,m.pick.index);
-  if(live.status!=='open'){m.status='done';appendBusinessMessage({type:'bet-result',content:`This market is ${live.status} and cannot accept new bets.`});return;}
+  if(live.status!=='open'){m.status='done';const resultId=uid();appendBusinessMessage({type:'bet-result',id:resultId,outcome:'failure',content:`This market is ${live.status} and cannot accept new bets.`});animateBetResult('failure',resultId);return;}
   if(live.odds!==m.pick.odds){const old=m.pick.odds;m.pick.odds=live.odds;m.error=`The odds have changed from ${old.toFixed(2)} to ${live.odds.toFixed(2)}. Review and confirm again.`;touchConversation(c);render();return;}
   m.scenario=stake>(m.availableBalance??500)?'balance':(['success','success','success','suspended','closed','odds'][Math.floor(Math.random()*6)]);
   mockBetRunning=true;m.status='running';const progress={role:'ai',type:'action-loading',loading:true,content:'正在提交投注…'};c.messages.push(progress);render();
   for(const text of ['正在确认赔率…','正在确认盘口状态…','正在等待投注平台结果…']){await new Promise(resolve=>setTimeout(resolve,450));progress.content=text;if(state.aiMode&&currentConversation()===c)render();}
   await new Promise(resolve=>setTimeout(resolve,450));c.messages.splice(c.messages.indexOf(progress),1);m.status='done';
-  let content,cta=null;
+  let content,cta=null,outcome='failure';
   if(m.scenario==='suspended'||m.scenario==='closed'){updateMockMarket(m.pick,{status:m.scenario});content=`This market is currently ${m.scenario} and cannot accept new bets.`;}
   else if(m.scenario==='odds'){const old=m.pick.odds,newOdds=Number((old-0.07).toFixed(2));updateMockMarket(m.pick,{odds:newOdds});m.pick.odds=newOdds;m.scenario='success';m.status='pending';content=`The odds have changed from ${old.toFixed(2)} to ${newOdds.toFixed(2)}. Please review the updated odds and Confirm Bet again.`;}
   else if(stake>(m.availableBalance??500)){content=`Your available balance is ${m.availableBalance??500} USDT, which is not enough for this ${stake} USDT bet.`;cta={label:'Go to Wallet',action:'wallet'};}
-  else {const betId=`WB${Date.now()}`;content=`<strong class="success">Bet Placed Successfully</strong><br><small>Mock bet · no real money wagered</small><br><br>${escapeHTML(m.pick.label)} @${m.pick.odds.toFixed(2)}<br>Stake: <strong>${stake} USDT</strong><br>Potential Payout: <strong>${(stake*m.pick.odds).toFixed(2)} USDT</strong><br>Bet ID: <strong>${betId}</strong>`;cta={label:'View My Bets',action:'mybets'};}
-  c.messages.push({role:'ai',type:'bet-result',content,cta});mockBetRunning=false;touchConversation(c);if(state.aiMode&&currentConversation()===c)render();
+  else {outcome='success';const betId=`WB${Date.now()}`;content=`<strong class="success">🎉 Bet Placed Successfully</strong><br><small>Mock bet · no real money wagered</small><br><br>${escapeHTML(m.pick.label)} @${m.pick.odds.toFixed(2)}<br>Stake: <strong>${stake} USDT</strong><br>Potential Payout: <strong>${(stake*m.pick.odds).toFixed(2)} USDT</strong><br>Bet ID: <strong>${betId}</strong>`;cta={label:'View My Bets',action:'mybets'};}
+  const resultId=uid();c.messages.push({role:'ai',type:'bet-result',id:resultId,outcome,content,cta});mockBetRunning=false;touchConversation(c);if(state.aiMode&&currentConversation()===c){render();animateBetResult(outcome,resultId);}
+}
+function animateBetResult(outcome,id){
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  if(outcome==='failure'){const warning=phone.querySelector(`[data-bet-result="${id}"] .bet-result-warning`);warning?.classList.add('bet-result-shake');setTimeout(()=>warning?.classList.remove('bet-result-shake'),550);return;}
+  phone.querySelector('.bet-celebration')?.remove();
+  const layer=document.createElement('div');layer.className='bet-celebration';layer.setAttribute('aria-hidden','true');
+  const colors=['#c968ef','#ffd76b','#67e8c0','#fa7f94','#f4e8ff'];
+  for(let i=0;i<70;i++){const particle=document.createElement('i');const angle=Math.random()*Math.PI*2;const distance=110+Math.random()*430;particle.style.cssText=`--dx:${Math.cos(angle)*distance}px;--dy:${Math.sin(angle)*distance}px;--turn:${Math.random()*1080-540}deg;--delay:${Math.random()*180}ms;background:${colors[i%colors.length]}`;layer.appendChild(particle);}
+  phone.appendChild(layer);setTimeout(()=>layer.remove(),2300);
 }
 document.addEventListener('input',e=>{const id=e.target.dataset.aiStake;if(!id)return;const m=findBet(id);if(m?.status!=='pending')return;m.stake=e.target.value;const payout=phone.querySelector(`[data-payout="${id}"]`);if(payout)payout.textContent=`${((Number(m.stake)||0)*m.pick.odds).toFixed(2)} USDT`;touchConversation(currentConversation());});
