@@ -77,6 +77,7 @@ const suggested = {
   mybets: ['为什么这张注单输了？', '为什么这张注单是 Void？', '为什么有效流水是这个金额？']
 };
 
+extendBusinessMocks();
 function now() { return Date.now(); }
 function uid() { return `c_${now()}_${Math.random().toString(36).slice(2, 7)}`; }
 function currentSportsEvent() { return sportsMockEvents[state.currentSportsEvent] || sportsMockEvents.tottenham; }
@@ -288,11 +289,12 @@ function aiWelcome() {
   return `<div class="ai-welcome"><div class="ai-orb">✦</div><h1>Hi, I’m WillBet AI</h1><p>How can I help you?</p>${qs.length?`<div class="suggestions"><small>Suggested Questions</small>${qs.map(q=>`<button data-question="${q}">${q}<span>›</span></button>`).join('')}</div>`:''}</div>`;
 }
 function messageHTML(m) {
+  if(m.type) { const html=businessMessageHTML(m); if(html!==null)return html; }
   if (m.loading) return `<article class="message ai loading-message"><div class="thinking"><i>✦</i><span>${m.content}</span></div></article>`;
   return `<article class="message ${m.role}">${m.role==='ai'?'<div class="mini-ai">✦</div>':''}<div class="message-body">${m.content}${m.games?aiGameResults(m.games):''}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}</div></article>`;
 }
 function aiGameResults(gameIds) {
-  return `<div class="ai-game-results">${gameIds.map(id=>{const game=casinoGames[id];if(!game)return '';return `<button class="ai-game-card" data-action="open-casino-game" data-game="${game.id}"><div class="ai-game-cover ${game.kind}"><span>${game.art}</span></div><b>${game.title}</b><small>${game.provider}</small></button>`;}).join('')}</div>`;
+  return `<div class="ai-game-results">${gameIds.map(id=>{const game=casinoGames[id];if(!game)return '';return `<button class="ai-game-card" data-action="open-casino-game" data-game="${game.id}"><div class="ai-game-cover ${game.kind}"><span>${game.art}</span><div class="ai-game-caption"><b>${game.title}</b><small>${game.provider}</small></div></div></button>`;}).join('')}</div>`;
 }
 function conversationFeedback(c) {
   const last = c.messages[c.messages.length - 1];
@@ -420,12 +422,13 @@ function sendQuestion(text, options={}) {
   loadingTimer=setTimeout(()=>{
     const target=conversations.find(x=>x.id===c.id) || (draftConversation?.id===c.id?draftConversation:null); if(!target) return;
     const idx=target.messages.findIndex(m=>m.loading);
-    if(idx>=0) target.messages.splice(idx,1,{role:'ai',content:result.answer,games:result.games||null,cta:result.cta||null});
+    if(idx>=0) target.messages.splice(idx,1,{role:'ai',content:result.answer,type:result.type,events:result.events,games:result.games||null,cta:result.cta||null});
     promoteConversation(target); touchConversation(target); if(state.aiMode && activeConversationId===target.id) render();
   }, result.delay || 1200);
 }
 
 function mockResponse(q,c) {
+  const business=businessSearch(q); if(business) return business;
   const s=q.toLowerCase().replace(/\s/g,'');
   const has=(...keys)=>keys.some(k=>s.includes(k.toLowerCase().replace(/\s/g,'')));
   const gameCategory=gameCategoryForQuery(q);
@@ -489,6 +492,7 @@ function bindFabDrag() {
 }
 
 document.addEventListener('click', e => {
+  if(handleBusinessClick(e)) return;
   const route=e.target.closest('[data-route]'); if(route){ const r=route.dataset.route; if(r==='menu'){state.drawerOpen=true;render({preserveScroll:true});}else { if(r==='sports-event' && route.dataset.event){state.currentSportsEvent=route.dataset.event;state.selectedSelection=null;state.betSlipOpen=false;} if(r==='casino-game')state.currentCasinoGame=route.dataset.game || null; navigate(r); } return; }
   const action=e.target.closest('[data-action]')?.dataset.action;
   if(action){
@@ -508,7 +512,7 @@ document.addEventListener('click', e => {
     else if(action==='support')copySupport();
     else if(action==='login-success'){
       state.loggedIn=true; const pending=state.pendingAuth; state.route=state.returnRoute||'home'; state.aiMode=true; state.aiView='chat'; state.historyOpen=false; state.pendingAuth=null;
-      if(pending){activeConversationId=pending.conversationId;} saveState(); render(); if(pending)sendQuestion(pending.question,{noUserMessage:true});
+      if(pending){activeConversationId=pending.conversationId;} saveState(); render(); if(pending?.betId)resumeMockBet(pending.betId);else if(pending)sendQuestion(pending.question,{noUserMessage:true});
     }
     else if(action==='cancel-login'){state.route=state.returnRoute||'home';state.aiMode=!!state.pendingAuth;render();}
     return;
