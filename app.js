@@ -278,7 +278,7 @@ function aiPage() {
   const isEmpty = !c || !c.messages.length;
   return `<section class="ai-screen">
     <header class="ai-header"><button data-action="close-ai" aria-label="Back">‹</button><div><b>WillBet AI</b><small>From ${contextLabel()}</small></div>${newChatButton()}<button class="header-history" data-action="open-history" aria-label="History" title="History">☰</button></header>
-    <div class="ai-chat" id="ai-chat">${isEmpty ? aiWelcome() : c.messages.map(messageHTML).join('') + conversationFeedback(c)}</div>
+    <div class="ai-chat" id="ai-chat">${isEmpty ? aiWelcome() : c.messages.map(messageHTML).join('')}</div>
     <form class="ai-input" id="ai-form"><div class="ai-input-row"><input id="ai-question" autocomplete="off" placeholder="Ask WillBet AI..."><button type="submit" aria-label="Send">↑</button></div><p class="ai-disclaimer">AI can make mistakes. Please verify important information. <button type="button" data-action="open-ai-disclaimer" aria-label="Learn more about WillBet AI usage">Learn more</button></p></form>
     ${state.historyOpen?historyDrawer():''}
   </section>`;
@@ -288,19 +288,18 @@ function aiWelcome() {
   const qs = suggested[state.aiSourceRoute] || [];
   return `<div class="ai-welcome"><div class="ai-orb">✦</div><h1>Hi, I’m WillBet AI</h1><p>How can I help you?</p>${qs.length?`<div class="suggestions"><small>Suggested Questions</small>${qs.map(q=>`<button data-question="${q}">${q}<span>›</span></button>`).join('')}</div>`:''}</div>`;
 }
-function messageHTML(m) {
-  if(m.type) { const html=businessMessageHTML(m); if(html!==null)return html; }
+function messageHTML(m,index) {
+  const feedback=messageFeedback(m,index);
+  if(m.type) { const html=businessMessageHTML(m,feedback); if(html!==null)return html; }
   if (m.loading) return `<article class="message ai loading-message"><div class="thinking"><i>✦</i><span>${m.content}</span></div></article>`;
-  return `<article class="message ${m.role}">${m.role==='ai'?'<div class="mini-ai">✦</div>':''}<div class="message-body">${m.content}${m.games?aiGameResults(m.games):''}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}</div></article>`;
+  return `<article class="message ${m.role}">${m.role==='ai'?'<div class="mini-ai">✦</div>':''}<div class="message-body">${m.content}${m.games?aiGameResults(m.games):''}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}${feedback}</div></article>`;
 }
 function aiGameResults(gameIds) {
   return `<div class="ai-game-results">${gameIds.map(id=>{const game=casinoGames[id];if(!game)return '';return `<button class="ai-game-card" data-action="open-casino-game" data-game="${game.id}"><div class="ai-game-cover ${game.kind}"><span>${game.art}</span><div class="ai-game-caption"><b>${game.title}</b><small>${game.provider}</small></div></div></button>`;}).join('')}</div>`;
 }
-function conversationFeedback(c) {
-  const last = c.messages[c.messages.length - 1];
-  if (!last || last.role !== 'ai' || last.loading) return '';
-  if (c.feedback) return `<section class="conversation-feedback answered" aria-live="polite"><span>${c.feedback==='yes'?'👍':'👎'}</span><small>Thanks for your feedback.</small></section>`;
-  return `<section class="conversation-feedback"><small>Did WillBet AI solve your problem?</small><div><button data-feedback="yes" aria-label="Yes, the AI solved my problem"><span>👍</span>Yes</button><button data-feedback="no" aria-label="No, the AI did not solve my problem"><span>👎</span>No</button></div></section>`;
+function messageFeedback(m,index) {
+  if(m.role!=='ai'||m.loading||['action-loading','bet-confirmation'].includes(m.type)||m.cta?.action==='login')return '';
+  return `<div class="message-feedback" role="group" aria-label="Rate this AI answer">${['yes','no'].map(value=>`<button type="button" data-message-feedback="${index}" data-rating="${value}" aria-label="${value==='yes'?'Yes, helpful':'No, not helpful'}" title="${value==='yes'?'Helpful':'Not helpful'}" aria-pressed="${m.feedback===value}" class="${m.feedback===value?'selected':''}">${value==='yes'?'👍':'👎'}</button>`).join('')}</div>`;
 }
 function historyDrawer() {
   const list = recentConversations();
@@ -518,7 +517,7 @@ document.addEventListener('click', e => {
     return;
   }
   const question=e.target.closest('[data-question]')?.dataset.question; if(question){sendQuestion(question);return;}
-  const feedback=e.target.closest('[data-feedback]')?.dataset.feedback; if(feedback){const c=currentConversation();if(c){c.feedback=feedback;saveConversations();render();}return;}
+  const feedback=e.target.closest('[data-message-feedback]'); if(feedback){const c=currentConversation(),m=c?.messages[Number(feedback.dataset.messageFeedback)];if(m){m.feedback=feedback.dataset.rating;saveConversations();feedback.parentElement.querySelectorAll('button').forEach(button=>{const selected=button.dataset.rating===m.feedback;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));});}return;}
   const cta=e.target.closest('[data-cta]')?.dataset.cta; if(cta){ctaAction(cta);return;}
   const conv=e.target.closest('[data-conversation]')?.dataset.conversation; if(conv){activeConversationId=conv;draftConversation=null;const c=currentConversation();touchConversation(c);state.historyOpen=false;render();return;}
   const tab=e.target.closest('[data-bets-tab]')?.dataset.betsTab; if(tab){state.myBetsTab=tab;saveState();render({preserveScroll:true});return;}
