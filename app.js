@@ -290,6 +290,7 @@ function aiWelcome() {
 }
 function messageHTML(m,index) {
   const feedback=messageFeedback(m,index);
+  const orderHTML=orderMessageHTML(m);if(orderHTML!==null)return orderHTML;
   if(m.type) { const html=businessMessageHTML(m,feedback); if(html!==null)return html; }
   if (m.loading) return `<article class="message ai loading-message"><div class="thinking"><i>✦</i><span>${m.content}</span></div></article>`;
   return `<article class="message ${m.role}">${m.role==='ai'?'<div class="mini-ai">✦</div>':''}<div class="message-body">${m.content}${m.games?aiGameResults(m.games):''}${m.cta?`<div class="message-cta"><button data-cta="${m.cta.action}">${m.cta.label}</button></div>`:''}${feedback}</div></article>`;
@@ -298,7 +299,7 @@ function aiGameResults(gameIds) {
   return `<div class="ai-game-results">${gameIds.map(id=>{const game=casinoGames[id];if(!game)return '';return `<button class="ai-game-card" data-action="open-casino-game" data-game="${game.id}"><div class="ai-game-cover ${game.kind}"><span>${game.art}</span><div class="ai-game-caption"><b>${game.title}</b><small>${game.provider}</small></div></div></button>`;}).join('')}</div>`;
 }
 function messageFeedback(m,index) {
-  if(m.role!=='ai'||m.loading||['action-loading','bet-confirmation'].includes(m.type)||m.cta?.action==='login')return '';
+  if(m.role!=='ai'||m.loading||['action-loading','bet-confirmation','casino-bet-list','sports-bet-list','withdrawal-list'].includes(m.type)||m.cta?.action==='login')return '';
   return `<div class="message-feedback" role="group" aria-label="Rate this AI answer">${['yes','no'].map(value=>`<button type="button" data-message-feedback="${index}" data-rating="${value}" aria-label="${value==='yes'?'Yes, helpful':'No, not helpful'}" title="${value==='yes'?'Helpful':'Not helpful'}" aria-pressed="${m.feedback===value}" class="${m.feedback===value?'selected':''}">${value==='yes'?'👍':'👎'}</button>`).join('')}</div>`;
 }
 function historyDrawer() {
@@ -351,6 +352,7 @@ function businessPage() {
     case 'home': return homePage(); case 'sports': return sportsPage(); case 'sports-event': return sportsEventPage();
     case 'casino': return casinoPage(); case 'casino-category': return casinoListPage('category'); case 'casino-baccarat': return baccaratCategoryPage(); case 'casino-provider': return casinoListPage('provider');
     case 'casino-game': return casinoGamePage(); case 'casino-play': return casinoPlayPage(); case 'casino-history': return casinoHistoryPage();
+    case 'withdrawal-detail': return withdrawalOrderDetail();
     case 'wallet': return walletPage(); case 'deposit': return depositPage(); case 'withdrawal': return withdrawalPage(); case 'deposit-history': return historyPage('deposit');
     case 'withdrawal-history': return historyPage('withdrawal'); case 'turnover': return turnoverPage(); case 'promotion': return promotionPage(); case 'promotion-detail': return promotionDetailPage();
     case 'coupon': return couponPage(); case 'vip': return vipPage(); case 'benefits': return benefitsPage(); case 'mission': return missionPage(); case 'messages': return messagesPage();
@@ -413,7 +415,7 @@ function sendQuestion(text, options={}) {
   c.lastActive=now(); if(isStoredConversation(c)) saveConversations(); render();
   const result=mockResponse(text,c);
   if(result.requiresLogin) {
-    c.messages.push({role:'ai',content:'要查看你当前的有效流水进度，需要先登录你的 WillBet 账户。',cta:{label:'Log In',action:'login'}});
+    c.messages.push({role:'ai',content:result.loginPrompt||'要查看你当前的有效流水进度，需要先登录你的 WillBet 账户。',cta:{label:'Log In',action:'login'}});
     promoteConversation(c); state.pendingAuth={conversationId:c.id,question:text}; touchConversation(c); render(); return;
   }
   c.messages.push({role:'ai',content:result.loading,loading:true}); touchConversation(c); render();
@@ -421,12 +423,13 @@ function sendQuestion(text, options={}) {
   loadingTimer=setTimeout(()=>{
     const target=conversations.find(x=>x.id===c.id) || (draftConversation?.id===c.id?draftConversation:null); if(!target) return;
     const idx=target.messages.findIndex(m=>m.loading);
-    if(idx>=0) target.messages.splice(idx,1,{role:'ai',content:result.answer,type:result.type,events:result.events,games:result.games||null,cta:result.cta||null});
+    if(idx>=0) target.messages.splice(idx,1,{role:'ai',content:result.answer,type:result.type,orders:result.orders,events:result.events,games:result.games||null,cta:result.cta||null});
     promoteConversation(target); touchConversation(target); if(state.aiMode && activeConversationId===target.id) render();
   }, result.delay || 1200);
 }
 
 function mockResponse(q,c) {
+  const order=orderResponse(q);if(order)return order;
   const business=businessSearch(q); if(business) return business;
   const s=q.toLowerCase().replace(/\s/g,'');
   const has=(...keys)=>keys.some(k=>s.includes(k.toLowerCase().replace(/\s/g,'')));
@@ -491,6 +494,7 @@ function bindFabDrag() {
 }
 
 document.addEventListener('click', e => {
+  if(handleOrderClick(e))return;
   if(handleBusinessClick(e)) return;
   const route=e.target.closest('[data-route]'); if(route){ const r=route.dataset.route; if(r==='menu'){state.drawerOpen=true;render({preserveScroll:true});}else { if(r==='sports-event' && route.dataset.event){state.currentSportsEvent=route.dataset.event;state.selectedSelection=null;state.betSlipOpen=false;} if(r==='casino-game')state.currentCasinoGame=route.dataset.game || null; navigate(r); } return; }
   const action=e.target.closest('[data-action]')?.dataset.action;
@@ -534,4 +538,5 @@ document.addEventListener('change',e=>{
   if(e.target.id==='demo-scenario'){state.scenario=e.target.value;if(state.scenario==='betFailed')state.recentAction='betFailed';else if(state.scenario==='withdrawalBlocked')state.recentAction='withdrawFailed';else if(state.scenario==='regionRestricted')state.recentAction='gameFailed';else state.recentAction=null;saveState();render();}
 });
 
+initOrderDetailContext();
 render();
